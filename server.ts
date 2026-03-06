@@ -20,7 +20,18 @@ async function startServer() {
 
   app.use(express.json({ limit: '50mb' }));
 
-  // 1. 数据库初始化
+  // ⭐ 1. 调试接口 (放在最前面，防止被拦截)
+  app.get("/api/health", (req, res) => {
+    const distPath = path.resolve(__dirname, "dist");
+    res.json({
+      status: "ok",
+      env: process.env.NODE_ENV,
+      distExists: fs.existsSync(distPath),
+      dirname: __dirname
+    });
+  });
+
+  // 2. 数据库初始化
   if (process.env.DATABASE_URL) {
     try {
       await pool.query(`
@@ -39,17 +50,6 @@ async function startServer() {
       console.error("❌ DB Error:", err);
     }
   }
-
-  // 2. 调试接口 (这次保证有了！)
-  app.get("/api/health", (req, res) => {
-    const distPath = path.resolve(__dirname, "dist");
-    res.json({
-      status: "ok",
-      env: process.env.NODE_ENV,
-      distExists: fs.existsSync(distPath),
-      distFiles: fs.existsSync(distPath) ? fs.readdirSync(distPath) : []
-    });
-  });
 
   // 3. 业务 API 路由
   app.get("/api/images", async (req, res) => {
@@ -78,19 +78,21 @@ async function startServer() {
   const hasDist = fs.existsSync(distPath);
 
   if (isProd && hasDist) {
-    console.log("Serving from dist...");
+    console.log("Serving static files from dist...");
     app.use(express.static(distPath));
+    // 生产环境的兜底路由
     app.get("*", (req, res) => {
       if (req.path.startsWith('/api')) return res.status(404).json({error: "API not found"});
       res.sendFile(path.join(distPath, "index.html"));
     });
   } else {
-    console.log("Starting Vite middleware...");
+    console.log("Starting Vite middleware (Dev mode)...");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
+    // 开发环境的兜底路由
     app.get("*", async (req, res) => {
       if (req.path.startsWith('/api')) return res.status(404).json({error: "API not found"});
       const template = fs.readFileSync(path.resolve(__dirname, "index.html"), "utf-8");
