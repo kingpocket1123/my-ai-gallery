@@ -2,7 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import pg from "pg";
 import path from "path";
-import fs from "fs"; // 正确的导入方式
+import fs from "fs";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 
@@ -18,10 +18,10 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
 
-  // 初始化数据库
-  if (!process.env.DATABASE_URL) {
-    console.error("错误：未检测到 DATABASE_URL 环境变量！");
-  } else {
+  app.use(express.json({ limit: '50mb' }));
+
+  // 1. 数据库初始化
+  if (process.env.DATABASE_URL) {
     try {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS images (
@@ -34,57 +34,43 @@ async function startServer() {
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
-      console.log("✅ 数据库连接成功且表已就绪");
+      console.log("✅ Database initialized");
     } catch (err) {
-      console.error("❌ 数据库初始化失败:", err);
+      console.error("❌ DB Error:", err);
     }
   }
 
-  app.use(express.json({ limit: '50mb' }));
+  // 2. 静态文件路径逻辑
+  const distPath = path.resolve(__dirname, "dist");
+  const isProd = process.env.NODE_ENV === "production";
+  const hasDist = fs.existsSync(distPath);
 
-  // API 路由
-  app.get("/api/images", async (req, res) => {
-    try {
-      const result = await pool.query("SELECT * FROM images ORDER BY created_at DESC");
-      res.json(result.rows);
-    } catch (err) {
-      res.status(500).json({ error: "获取失败" });
-    }
-  });
+  console.log(`Mode: ${process.env.NODE_ENV}, DistExists: ${hasDist}`);
 
-  app.post("/api/images", async (req, res) => {
-    const { image_data, prompt, tags } = req.body;
-    try {
-      const query = `
-        INSERT INTO images (image_data, prompt_original, prompt_en, prompt_zh, tags)
-        VALUES ($1, $2, $3, $4, $5) RETURNING id
-      `;
-      const result = await pool.query(query, [image_data, prompt, prompt, prompt, JSON.stringify(tags || [])]);
-      res.json({ id: result.rows[0].id, success: true });
-    } catch (err) {
-      res.status(500).json({ error: "保存失败" });
-    }
-  });
-
-  // 静态文件处理
-  const distPath = path.join(__dirname, "dist");
-  const useStatic = process.env.NODE_ENV === "production" && fs.existsSync(distPath);
-
-  if (!useStatic) {
-    console.log("正在启动 Vite 开发模式...");
+  if (isProd && hasDist) {
+    // 生产模式：直接提供打包后的文件
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      if (req.path.startsWith('/api')) return res.status(404).json({error: "API not found"});
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  } else {
+    // 开发模式：使用 Vite 中间件
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
-    console.log("正在启动 生产环境 静态服务...");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
+    app.get("*", async (req, res) => {
+      if (req.path.startsWith('/api')) return res.status(404).json({error: "API not found"});
+      const template = fs.readFileSync(path.resolve(__dirname, "index.html"), "utf-8");
+      const html = await vite.transformIndexHtml(req.originalUrl, template);
+      res.status(200).set({ "Content-Type": "text/html" }).end(html);
+    });
   }
 
   app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`🚀 服务器运行在: http://localhost:${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
   });
 }
 
