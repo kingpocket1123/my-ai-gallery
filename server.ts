@@ -40,22 +40,52 @@ async function startServer() {
     }
   }
 
-  // 2. 静态文件路径逻辑
+  // 2. 调试接口 (这次保证有了！)
+  app.get("/api/health", (req, res) => {
+    const distPath = path.resolve(__dirname, "dist");
+    res.json({
+      status: "ok",
+      env: process.env.NODE_ENV,
+      distExists: fs.existsSync(distPath),
+      distFiles: fs.existsSync(distPath) ? fs.readdirSync(distPath) : []
+    });
+  });
+
+  // 3. 业务 API 路由
+  app.get("/api/images", async (req, res) => {
+    try {
+      const result = await pool.query("SELECT * FROM images ORDER BY created_at DESC");
+      res.json(result.rows);
+    } catch (err) {
+      res.status(500).json({ error: "Fetch failed" });
+    }
+  });
+
+  app.post("/api/images", async (req, res) => {
+    const { image_data, prompt, tags } = req.body;
+    try {
+      const query = `INSERT INTO images (image_data, prompt_original, prompt_en, prompt_zh, tags) VALUES ($1, $2, $3, $4, $5) RETURNING id`;
+      const result = await pool.query(query, [image_data, prompt, prompt, prompt, JSON.stringify(tags || [])]);
+      res.json({ id: result.rows[0].id, success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Save failed" });
+    }
+  });
+
+  // 4. 静态文件与 Vite 处理
   const distPath = path.resolve(__dirname, "dist");
   const isProd = process.env.NODE_ENV === "production";
   const hasDist = fs.existsSync(distPath);
 
-  console.log(`Mode: ${process.env.NODE_ENV}, DistExists: ${hasDist}`);
-
   if (isProd && hasDist) {
-    // 生产模式：直接提供打包后的文件
+    console.log("Serving from dist...");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       if (req.path.startsWith('/api')) return res.status(404).json({error: "API not found"});
       res.sendFile(path.join(distPath, "index.html"));
     });
   } else {
-    // 开发模式：使用 Vite 中间件
+    console.log("Starting Vite middleware...");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
