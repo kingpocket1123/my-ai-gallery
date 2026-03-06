@@ -1,0 +1,23 @@
+{
+  "name": "ai-gallery",
+  "type": "module",
+  "scripts": {
+    "start": "tsx server.ts",
+    "build": "vite build",
+    "dev": "tsx server.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^1.29.0",
+    "express": "^4.21.2",
+    "pg": "^8.11.3",
+    "dotenv": "^17.2.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "tsx": "^4.21.0",
+    "vite": "^6.2.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "react-masonry-css": "^1.0.16"
+  }
+}
