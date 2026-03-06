@@ -1,11 +1,13 @@
 {
   "name": "ai-gallery",
   "type": "module",
-  "scripts": {
-    "start": "tsx server.ts",
-    "build": "vite build",
-    "dev": "tsx server.ts"
-  },
+"scripts": {
+  "dev": "tsx server.ts",
+  "build": "vite build",
+  "start": "node server.ts", 
+  "preview": "vite preview",
+  "lint": "tsc --noEmit"
+},
   "dependencies": {
     "@google/genai": "^1.29.0",
     "express": "^4.21.2",
